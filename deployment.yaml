@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name:  www
+spec:
+  selector:
+    matchLabels:
+      app: www
+  strategy:
+    type: RollingUpdate #Выбираем постепенное обновление подов
+    rollingUpdate:
+      maxSurge: 1 #Максимальное одновременное обновление подов
+      maxUnavailable: 0 #Максимальное количество недоступных подов
+  template:
+    metadata:
+      labels:
+        app: www
+    spec:
+      containers:
+        - name: nginx
+          image: nginx
+          resources:
+            requests:
+              memory: "128Mi" #Приложение потребляет ровно 128Мб
+              cpu: "0.1" #Для обыной работы
+            limits:
+              memory: "128Mi" #Всегда 128Мбб
+              cpu: "1" #Для старта
+          livenessProbe: #Проверка работоспособности
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 15
+            timeoutSeconds: 10
+          readinessProbe: #Проверка старта
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10 #Даём 10 секунд для старта
+            periodSeconds: 5
+          ports:
+            - containerPort: 80
+              name: nginx-port
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler #
+metadata:
+  name: www
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: www
+  minReplicas: 2 #Минимальное количество подов, для отказоустойчивости выбираем два
+  maxReplicas: 4 #Знаем что 4 подов хватает при пиковой нагрузке, поэтому максимальное количество 4
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80 #Добавляем под при 80% утилизации процессора
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mind-box-service
+spec:
+  selector:
+    app: www
+  type:  ClusterIP
+  ports:
+  - name: http 
+    port: 80
+    targetPort: nginx-port
